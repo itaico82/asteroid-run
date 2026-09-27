@@ -1,0 +1,5 @@
+# Supabase CLI config for Asteroid Run (the live project is noxbdkiejpemkawscwsp, London)
+project_id = "asteroid-run"
+
+[functions.pilot-signup]
+verify_jwt = false
