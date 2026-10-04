@@ -190,6 +190,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .bigstars{font-size:clamp(34px,9vw,56px);color:var(--amber);letter-spacing:6px;text-shadow:0 0 20px rgba(255,179,71,.6);line-height:1}
 .bigstars .off{color:rgba(255,255,255,.14);text-shadow:none}
 .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;font:700 13px var(--font-b);letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--good);color:var(--good);background:rgba(79,240,168,.08)}
+.badge.shield{border-color:var(--hud);color:var(--hud);background:rgba(62,230,255,.08)}
 .badge.warp{border-color:var(--warp);color:var(--warp);background:rgba(178,107,255,.1)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px}
 .tile{padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;background:rgba(8,14,32,.55)}
@@ -596,6 +597,9 @@ function buildQuestions(cfg,facts){
 }
 function weightedPick(arr){ const tot=arr.reduce((s,p)=>s+p.w,0); let r=Math.random()*tot; for(const p of arr){ r-=p.w; if(r<=0)return p; } return arr[arr.length-1]; }
 const starsFor=c=>c>=25?3:c>=23?2:c>=20?1:0;
+/* a hit the shield absorbed stays a miss in every statistic, but the star grade forgives it */
+const shieldSaves=r=>(r&&Array.isArray(r.att))?r.att.filter(a=>a&&a.sh&&!a.ok).length:0;
+const runStars=r=>starsFor(Math.min(TOTAL,(r.correct||0)+shieldSaves(r)));
 const starHtml=s=>'<span class="stars">'+'★'.repeat(s)+'<span class="off">'+'★'.repeat(3-s)+'</span></span>';
 
 /* ===================== Hangar store: catalogue, paints, hulls ===================== */
@@ -677,7 +681,7 @@ const Store={
     p.settings=Object.assign(p.settings,r.settings||{}); p.shop=Object.assign({owned:[],eq:{},spent:0},r.shop||{}); if(!Array.isArray(p.shop.owned)) p.shop.owned=[]; p.shop.eq=p.shop.eq||{}; p.shop.spent=Number(p.shop.spent)||0; return p; },
   runFromRow(r){ return {id:r.id,pid:r.pilot_id,ts:Number(r.ts),lvl:r.lvl,name:r.name,mode:r.mode,limit:r.lim,total:r.total||25,correct:r.correct,score:r.score,avgRt:r.avg_rt,maxStreak:r.max_streak,hull:r.hull,warpQ:r.warp_q,scan:r.scan||0,perf:r.perf||0,att:r.att||[]}; },
   runToRow(x){ return {id:x.id,ts:x.ts,lvl:x.lvl,name:x.name,mode:x.mode,lim:x.limit,correct:x.correct,total:25,score:Math.round(x.score||0),avg_rt:x.avgRt==null?null:Math.round(x.avgRt),max_streak:x.maxStreak,hull:x.hull,warp_q:x.warpQ,scan:x.scan||0,perf:x.perf||0,
-    att:(x.att||[]).map(a=>({k:a.k,op:a.op,a:a.a,b:a.b,ans:a.ans,g:a.g,ok:!!a.ok,rt:Math.round(a.rt||0),to:!!a.to}))}; },
+    att:(x.att||[]).map(a=>({k:a.k,op:a.op,a:a.a,b:a.b,ans:a.ans,g:a.g,ok:!!a.ok,rt:Math.round(a.rt||0),to:!!a.to,...(a.sh?{sh:true}:{})}))}; },
   profileRow(p){ return {callsign:p.callsign,emblem:p.emblem,unlocked:p.unlocked,best:p.best,settings:p.settings,shop:p.shop}; },
   /* ---- on-device cache, offline queue, and the list of pilots who use this device ---- */
   saveCache(){ if(!this.me)return; lsSet('ar.cache.'+this.me.id,{me:this.me,runs:this.runs}); lsSet('ar.last',this.me.id); },
@@ -990,7 +994,7 @@ const Game={
       Space.dodge(); if(!enter) Space.popup('+'+pts,this.warp?'#e0b3ff':'#4ff0a8'); else setTimeout(()=>Space.popup('+'+pts,'#e0b3ff'),350);
       Sfx.correct(this.streak); UI.markAnswer(true); if(!enter)UI.flash('good'); this.nextAt=t+this.gapOk; }
     else { this.streak=0; if(this.warp){ this.warp=false; Space.setWarp(false); UI.warpBadge(false); }
-      if(this.shield>0){ this.shield--; Space.shield=false; Space.collide(to); Space.shieldHit(); Space.popup('SHIELD!','#5ee9ff'); Sfx.wrong(); UI.markAnswer(false); UI.flash('good'); }
+      if(this.shield>0){ this.shield--; this.att[this.att.length-1].sh=true; Space.shield=false; Space.collide(to); Space.shieldHit(); Space.popup('SHIELD!','#5ee9ff'); Sfx.wrong(); UI.markAnswer(false); UI.flash('good'); }
       else { this.hull=Math.max(0,this.hull-1); Space.collide(to); Sfx.wrong(); UI.markAnswer(false); UI.flash('hit'); UI.shakeDom(); }
       if(Store.profile.settings.showAnswer&&!this.cfg.hideAnswer) UI.reveal(q); this.nextAt=t+this.gapMiss; }
     this.idx++; UI.hud(); UI.pips(); },
@@ -1008,8 +1012,8 @@ const Game={
     const bonus=this.hull*50; this.score+=bonus; const scan=this.L.up.scanner?Math.round(this.score*0.10):0; this.score+=scan;
     const perfect=correct===TOTAL; const perf=perfect?(cfg.mode==='mtc'?2500:cfg.mode==='focus'?1500:1000+100*cfg.n):0; this.score+=perf;
     const run={id:uid(),ts:this.startTs,lvl:cfg.id,name:cfg.name,mode:cfg.mode,limit:cfg.limit,total:TOTAL,correct,score:this.score,avgRt,maxStreak:this.maxStreak,hull:this.hull,warpQ:this.warpQ,scan,perf,att};
-    const stars=starsFor(correct); const p=Store.profile; let unlocked='';
-    const prev=p.best[cfg.id]; const better=!prev||correct>prev.correct||(correct===prev.correct&&this.score>prev.score);
+    const stars=runStars(run); const p=Store.profile; let unlocked='';
+    const prev=p.best[cfg.id]; const ps=prev?(prev.stars||0):0; const better=!prev||stars>ps||(stars===ps&&(correct>prev.correct||(correct===prev.correct&&this.score>prev.score)));
     if(better) p.best[cfg.id]={stars,correct,score:this.score,avgRt,ts:run.ts};
     if(cfg.mode==='ladder'&&correct>=20&&cfg.n<LEVELS.length&&p.unlocked<cfg.n+1){ p.unlocked=cfg.n+1; unlocked='Level '+(cfg.n+1)+' unlocked: '+LEVELS[cfg.n].name; }
     Store.saveProfile(); Store.addRun(run);
@@ -1067,17 +1071,17 @@ const UI={
   /* ---- Results ---- */
   renderResults(run,cfg,unlocked,bonus){ const att=run.att,ok=att.filter(a=>a.ok),misses=att.filter(a=>!a.ok);
     const slowThr=Math.min(6000,Math.round(cfg.limit*0.85)); const slow=ok.filter(a=>a.rt>=slowThr).sort((a,b)=>b.rt-a.rt);
-    const fastest=ok.length?Math.min.apply(null,ok.map(a=>a.rt)):null; const under6=ok.filter(a=>a.rt<6000).length; const stars=starsFor(run.correct);
+    const fastest=ok.length?Math.min.apply(null,ok.map(a=>a.rt)):null; const under6=ok.filter(a=>a.rt<6000).length; const stars=runStars(run); const saved=shieldSaves(run);
     const grade=run.correct>=25?'PERFECT RUN':run.correct>=23?'ACE PILOT':run.correct>=20?'MISSION COMPLETE':'KEEP FLYING';
     let sub=unlocked; if(!sub){ if(cfg.mode==='mtc') sub=run.correct===25?'Full marks at the official pace!':(25-run.correct)+' to go — the real check needs every answer inside 6 seconds'; else if(cfg.mode==='focus') sub='Your trickiest facts, hit '+run.correct+' out of 25 times'; else if(run.correct<20) sub='Get 20 right to unlock the next level'; else if(cfg.n===LEVELS.length) sub='Top of the ladder — nothing in the galaxy is faster'; else sub='Level '+(cfg.n+1)+' is open — go faster or go further'; }
-    const badges=[]; if(run.correct===25&&ok.every(a=>a.rt<6000)) badges.push('<span class="badge">All 25 under 6 seconds</span>'); else if(under6===ok.length&&ok.length>=20) badges.push('<span class="badge">Every right answer under 6s</span>'); if(run.warpQ>0) badges.push('<span class="badge warp">'+run.warpQ+' answer'+(run.warpQ>1?'s':'')+' at warp speed</span>'); if(run.maxStreak>=10) badges.push('<span class="badge">'+run.maxStreak+' in a row</span>');
+    const badges=[]; if(run.correct===25&&ok.every(a=>a.rt<6000)) badges.push('<span class="badge">All 25 under 6 seconds</span>'); else if(under6===ok.length&&ok.length>=20) badges.push('<span class="badge">Every right answer under 6s</span>'); if(run.warpQ>0) badges.push('<span class="badge warp">'+run.warpQ+' answer'+(run.warpQ>1?'s':'')+' at warp speed</span>'); if(run.maxStreak>=10) badges.push('<span class="badge">'+run.maxStreak+' in a row</span>'); if(saved) badges.unshift('<span class="badge shield">Shield took a hit &middot; stars kept</span>');
     const cls=run.correct>=23?'good':run.correct>=20?'warn':'bad'; const avgCls=run.avgRt==null?'':run.avgRt<4500?'good':run.avgRt<6000?'warn':'bad';
     const next=(cfg.mode==='ladder'&&cfg.n<LEVELS.length&&Store.profile.unlocked>cfg.n)?LEVELS[cfg.n]:null;
     let html=run.perf?'<div class="gradebar"><b>PERFECT RUN</b><span>Every asteroid dodged &mdash; fireworks earned and a <b style="font-size:inherit">&#9672; '+fmtB(run.perf)+'</b> Space Bucks bonus banked</span></div>':'';
     html+='<div class="panel"><div class="grade-wrap"><div><div class="eyebrow">'+esc(Store.profile.name)+' · '+esc(cfg.name)+' · '+fmtDateTime(run.ts)+'</div><div class="grade">'+grade+'</div><div class="grade-sub">'+esc(sub)+'</div></div><div class="bigstars">'+'★'.repeat(stars)+'<span class="off">'+'★'.repeat(3-stars)+'</span></div></div>'+(badges.length?'<div class="actions" style="margin-top:12px">'+badges.join('')+'</div>':'')+'</div>';
     const xs=att.filter(a=>a.op==='x'),ds=att.filter(a=>a.op==='d'); const opTile=(lab,arr)=>{ const o=arr.filter(a=>a.ok); const av=o.length?mean(o.map(a=>a.rt)):null; return '<div class="tile '+(o.length===arr.length?'good':o.length>=arr.length-1?'warn':'bad')+'"><div class="k">'+lab+' right</div><div class="v">'+o.length+'<small>/'+arr.length+(av!=null?' · '+fmtT(av):'')+'</small></div></div>'; };
     html+='<div class="tiles"><div class="tile '+cls+'"><div class="k">Correct</div><div class="v">'+run.correct+'<small>/25</small></div></div><div class="tile"><div class="k">Score</div><div class="v">'+run.score+'</div></div><div class="tile '+avgCls+'"><div class="k">Avg answer</div><div class="v">'+fmtT(run.avgRt)+'</div></div><div class="tile"><div class="k">Fastest</div><div class="v">'+fmtT(fastest)+'</div></div><div class="tile '+(under6===25?'good':'')+'"><div class="k">Right &amp; under 6s</div><div class="v">'+under6+'<small>/25</small></div></div><div class="tile"><div class="k">Best streak</div><div class="v">'+run.maxStreak+'</div></div>'+((xs.length&&ds.length)?opTile('×',xs)+opTile('÷',ds):'')+'</div>';
-    html+='<div class="two"><div class="panel"><h2>Collisions · '+misses.length+'</h2>'+(misses.length?'<div class="list">'+misses.map(a=>'<div class="row miss"><b>'+esc(qText(a))+' = '+a.ans+'</b><span class="r">'+(a.to?'ran out of time':'typed '+a.g)+'</span></div>').join('')+'</div>':'<div class="empty">Not a scratch on the hull.</div>')+'</div>';
+    html+='<div class="two"><div class="panel"><h2>Collisions · '+misses.length+'</h2>'+(misses.length?'<div class="list">'+misses.map(a=>'<div class="row miss"><b>'+esc(qText(a))+' = '+a.ans+'</b><span class="r">'+(a.to?'ran out of time':'typed '+a.g)+(a.sh?' &middot; shield took it':'')+'</span></div>').join('')+'</div>':'<div class="empty">Not a scratch on the hull.</div>')+'</div>';
     html+='<div class="panel"><h2>Right but slow · '+slow.length+'</h2><div class="empty" style="margin-bottom:8px">'+(slow.length?'Correct, but '+(slowThr/1000)+'s or more. These will come round again.':'Every right answer came in fast.')+'</div>'+(slow.length?'<div class="list">'+slow.map(a=>'<div class="row slow"><b>'+esc(qText(a))+' = '+a.ans+'</b><span class="r">'+fmtT(a.rt)+'</span></div>').join('')+'</div>':'')+'</div></div>';
     html+='<div class="actions"><button class="btn primary" data-act="again" type="button">Fly again</button>'+(next?'<button class="btn warp" data-act="next" type="button">Next: '+esc(next.name)+'</button>':'')+'<button class="btn" data-act="log" type="button">Flight log</button><button class="btn warp" data-act="store" type="button">Store</button><button class="btn ghost" data-act="home" type="button">Mission control</button></div>';
     html+='<div class="bucks-line"><span>&#9672; +'+fmtB(run.score)+'</span><small>Space Bucks earned</small><span style="color:var(--ink-3)">&middot;</span><small>balance</small><span>'+fmtB(Store.balance())+'</span></div>';
