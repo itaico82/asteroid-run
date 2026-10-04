@@ -265,7 +265,20 @@ input.name{font:700 18px var(--font-b);padding:8px 12px;border-radius:10px;borde
   .qwrap{top:6%}
   .hud .lbl2{max-width:22vw}
 }
+.shieldbtn{position:absolute;left:12px;bottom:12px;z-index:3;width:clamp(66px,10vh,86px);height:clamp(66px,10vh,86px);border-radius:50%;padding:0;border:2px solid var(--hud);background:radial-gradient(circle at 50% 38%,rgba(62,230,255,.38),rgba(6,10,24,.88) 72%);color:var(--hud);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;box-shadow:0 0 22px rgba(62,230,255,.45);touch-action:manipulation;-webkit-user-select:none;user-select:none;transition:transform .08s,border-color .15s,color .15s,background .15s}
+.shieldbtn:active{transform:scale(.93)}
+.shieldbtn svg{width:44%;height:44%}
+.shieldbtn .sl{font:700 clamp(9px,1.4vh,11px) var(--font-d);letter-spacing:.1em}
+.shieldbtn .kb{position:absolute;top:-4px;right:-4px;font:700 11px var(--font-d);line-height:1;background:#0b1530;border:1px solid var(--line);border-radius:6px;padding:3px 5px;color:var(--ink-2)}
+.shieldbtn.armed{animation:shieldPulse 1.6s ease-in-out infinite}
+.shieldbtn.off{border-color:rgba(255,255,255,.28);background:rgba(6,10,24,.8);color:var(--ink-2);box-shadow:none}
+.shieldbtn.off .tick,.shieldbtn.used .tick{display:none}
+.shieldbtn.used{opacity:.45;border-style:dashed;border-color:rgba(255,255,255,.25);color:var(--ink-3);background:rgba(6,10,24,.7);box-shadow:none;cursor:default}
+.shieldbtn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+@keyframes shieldPulse{50%{box-shadow:0 0 36px rgba(62,230,255,.8)}}
+@media (hover:none){ .shieldbtn .kb{display:none} }
 @media (prefers-reduced-motion:reduce){
+  .shieldbtn.armed{animation:none}
   .warp-badge,.tleft.crit{animation:none}
   #play.shake .left{animation:none}
   .count .n{animation:none}
@@ -361,6 +374,7 @@ input.name.pin::placeholder{font:600 17px var(--font-b);letter-spacing:.12em;col
         <div class="flash" id="flash"></div>
         <div class="count" id="count" hidden><div class="n" id="countN">3</div><div class="m" id="countM">Launch in</div></div>
         <div class="celebrate" id="celebrate" hidden><div class="ctitle">PERFECT RUN</div><div class="csub" id="celebSub">25 out of 25</div><div class="cbonus" id="celebBonus">&#9672; +2,000 bonus</div></div>
+        <button class="shieldbtn armed" id="shieldBtn" type="button" hidden aria-pressed="true" aria-label="Shield armed. Press S to switch it off."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 4 5.6v6.1c0 4.7 3.3 8.6 8 9.8 4.7-1.2 8-5.1 8-9.8V5.6z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m8.4 12.2 2.5 2.5 4.8-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tick"/></svg><span class="sl" id="shieldLbl">ARMED</span><span class="kb" aria-hidden="true">S</span></button>
         <div class="overlay" id="pauseOv" hidden>
           <h2>PAUSED</h2>
           <p class="empty" style="margin:0">Take a breath, pilot. The asteroid is frozen.</p>
@@ -606,7 +620,7 @@ const starHtml=s=>'<span class="stars">'+'★'.repeat(s)+'<span class="off">'+'�
 const fmtB=n=>Math.round(n||0).toLocaleString('en-GB');
 const SHOP_CATS=[['up','Upgrades'],['hull','Hulls'],['paint','Paint'],['trail','Trails'],['addon','Add-ons'],['fx','Effects']];
 const ITEMS=[
-  {id:'shield',  cat:'up',   name:'Shield Generator',desc:'Absorbs the first collision of every mission: no hull damage, no shake.',price:12000},
+  {id:'shield',  cat:'up',   name:'Shield Generator',desc:'Absorbs one collision per mission. Tap the shield button (or press S) to switch it off and save it for a harder question.',price:12000},
   {id:'hull6',   cat:'up',   name:'Reinforced Hull', desc:'Six hull segments instead of five, and a bigger hull bonus at the end.',price:15000},
   {id:'warpcoil',cat:'up',   name:'Warp Coil',       desc:'Warp speed kicks in after 4 right answers in a row instead of 5.',price:20000},
   {id:'scanner', cat:'up',   name:'Ore Scanner',     desc:'+10% score on every mission, which means 10% more Space Bucks too.',price:25000},
@@ -792,6 +806,8 @@ const Sfx={ctx:null,
   key(){ this.tone(880,880,0.035,'square',0.04); },
   correct(streak){ const b=520+Math.min(streak,10)*28; this.tone(b,b*1.5,0.09,'triangle',0.16); this.tone(b*1.5,b*2,0.13,'triangle',0.14,0.07); },
   wrong(){ this.tone(220,90,0.4,'sawtooth',0.14); this.noise(0.55,0.4,600); },
+  shieldOn(){ this.tone(420,1180,0.2,'sine',0.13); this.tone(840,1600,0.16,'triangle',0.06,0.06); },
+  shieldOff(){ this.tone(900,360,0.2,'sine',0.11); },
   warp(){ this.tone(180,1800,0.8,'sawtooth',0.12); this.tone(300,2600,0.8,'sine',0.1,0.05); },
   tick(){ this.tone(1300,1300,0.05,'square',0.06); },
   launch(){ this.tone(260,980,0.55,'sawtooth',0.12); this.noise(0.7,0.22,400); },
@@ -965,8 +981,8 @@ function mixRgb(a,b,t){ const A=a.split(',').map(Number),B=b.split(',').map(Numb
 
 /* ===================== Game ===================== */
 const Game={
-  cfg:null,qs:[],idx:0,phase:'idle',t0:0,limit:0,qLimit:0,gapOk:3000,gapMiss:3000,hullMax:5,warpAt:5,shield:0,L:null,typed:'',streak:0,maxStreak:0,warp:false,hull:5,score:0,att:[],paused:false,pausedAt:0,nextAt:0,warpQ:0,startTs:0,cur:null,cd:[],lastTick:-1,
-  start(cfg){ const facts=computeFacts(Store.myRuns()); this.L=resolveLoadout(Store.profile); Space.loadout=this.L; this.hullMax=this.L.up.hull6?6:5; this.warpAt=this.L.up.warpcoil?4:5; this.shield=this.L.up.shield?1:0; Space.shield=this.shield>0;
+  cfg:null,qs:[],idx:0,phase:'idle',t0:0,limit:0,qLimit:0,shieldArmed:false,gapOk:3000,gapMiss:3000,hullMax:5,warpAt:5,shield:0,L:null,typed:'',streak:0,maxStreak:0,warp:false,hull:5,score:0,att:[],paused:false,pausedAt:0,nextAt:0,warpQ:0,startTs:0,cur:null,cd:[],lastTick:-1,
+  start(cfg){ const facts=computeFacts(Store.myRuns()); this.L=resolveLoadout(Store.profile); Space.loadout=this.L; this.hullMax=this.L.up.hull6?6:5; this.warpAt=this.L.up.warpcoil?4:5; this.shield=this.L.up.shield?1:0; this.shieldArmed=this.shield>0; Space.shield=this.shieldArmed;
     Object.assign(this,{cfg,qs:buildQuestions(cfg,facts),idx:0,phase:'idle',typed:'',streak:0,maxStreak:0,warp:false,hull:this.hullMax,score:0,att:[],warpQ:0,paused:false,cur:null,startTs:Date.now(),lastTick:-1});
     this.limit=cfg.limit; this.qLimit=cfg.limit; this.gapOk=cfg.gap||GAP_MS; this.gapMiss=cfg.gap||GAP_MS; /* official 3-second recovery gap on every level */
     UI.show('play'); Space.reset(); UI.hudInit(cfg); UI.setTyped(''); UI.hideReveal(); UI.timer(0,cfg.limit); $('#q').style.visibility='hidden';
@@ -994,7 +1010,7 @@ const Game={
       Space.dodge(); if(!enter) Space.popup('+'+pts,this.warp?'#e0b3ff':'#4ff0a8'); else setTimeout(()=>Space.popup('+'+pts,'#e0b3ff'),350);
       Sfx.correct(this.streak); UI.markAnswer(true); if(!enter)UI.flash('good'); this.nextAt=t+this.gapOk; }
     else { this.streak=0; if(this.warp){ this.warp=false; Space.setWarp(false); UI.warpBadge(false); }
-      if(this.shield>0){ this.shield--; this.att[this.att.length-1].sh=true; Space.shield=false; Space.collide(to); Space.shieldHit(); Space.popup('SHIELD!','#5ee9ff'); Sfx.wrong(); UI.markAnswer(false); UI.flash('good'); }
+      if(this.shield>0&&this.shieldArmed){ this.shield--; this.shieldArmed=false; this.att[this.att.length-1].sh=true; Space.shield=false; UI.shieldBtn(); Space.collide(to); Space.shieldHit(); Space.popup('SHIELD!','#5ee9ff'); Sfx.wrong(); UI.markAnswer(false); UI.flash('good'); }
       else { this.hull=Math.max(0,this.hull-1); Space.collide(to); Sfx.wrong(); UI.markAnswer(false); UI.flash('hit'); UI.shakeDom(); }
       if(Store.profile.settings.showAnswer&&!this.cfg.hideAnswer) UI.reveal(q); this.nextAt=t+this.gapMiss; }
     this.idx++; UI.hud(); UI.pips(); },
@@ -1006,6 +1022,11 @@ const Game={
   pause(){ if((this.phase==='question'||this.phase==='feedback')&&!this.paused){ this.paused=true; this.pausedAt=now(); UI.pauseOv(true); } },
   resume(){ if(!this.paused)return; const d=now()-this.pausedAt; this.t0+=d; this.nextAt+=d; Space.shiftRock(d); this.paused=false; UI.pauseOv(false); },
   togglePause(){ this.paused?this.resume():this.pause(); },
+  toggleShield(){ if(this.paused||this.phase==='done'||$('#play').hidden||!this.L||!this.L.up.shield)return;
+    if(this.shield<=0){ Sfx.tone(160,120,0.12,'square',0.05); return; }
+    this.shieldArmed=!this.shieldArmed; Space.shield=this.shieldArmed;
+    if(this.shieldArmed){ Sfx.shieldOn(); Space.shieldHit(); Space.popup('SHIELD ARMED','#5ee9ff'); } else { Sfx.shieldOff(); Space.popup('SHIELD SAVED FOR LATER','#9fb3d1'); }
+    UI.shieldBtn(); },
   quit(){ this.cd.forEach(clearTimeout); this.cd=[]; this.phase='idle'; this.paused=false; UI.pauseOv(false); UI.celebrateOff(); Space.setWarp(false); Space.clearRock(); Space.shield=false; $('#count').hidden=true; UI.renderHome(); UI.show('home'); },
   finish(){ this.phase='done'; Space.clearRock(); Space.setWarp(false); Space.shield=false; UI.warpBadge(false);
     const cfg=this.cfg,att=this.att,ok=att.filter(a=>a.ok),correct=ok.length; const avgRt=ok.length?Math.round(mean(ok.map(a=>a.rt))):null;
@@ -1050,7 +1071,7 @@ const UI={
     return '<button class="lv '+cls+(locked?' locked':'')+'" type="button" data-id="'+cfg.id+'"'+(locked?' aria-disabled="true"':'')+'><div class="num">'+num+'</div><div><div class="name">'+esc(cfg.name)+'</div><div class="sub">'+esc(cfg.sub)+' · '+secs+'s a question</div></div>'+meta+'</button>'; },
   /* ---- HUD ---- */
   hudInit(cfg){ this.el.hudLevel.textContent=cfg.mode==='ladder'?('Level '+cfg.n):(cfg.mode==='mtc'?'Official check':'Focus'); this.el.hudName.textContent=cfg.name;
-    this.el.pips.innerHTML='<i></i>'.repeat(TOTAL); this.el.hull.innerHTML='<i></i>'.repeat(Game.hullMax||5); this.warpBadge(false); this.hud(); this.hudQ(); this.pips(); this.el.q.className='q'; this.el.timer.className='timer'; this.el.tleft.className='tleft'; },
+    this.el.pips.innerHTML='<i></i>'.repeat(TOTAL); this.el.hull.innerHTML='<i></i>'.repeat(Game.hullMax||5); this.warpBadge(false); this.hud(); this.hudQ(); this.pips(); this.el.q.className='q'; this.el.timer.className='timer'; this.el.tleft.className='tleft'; this.shieldBtn(); },
   hudQ(){ this.el.hudQ.textContent=Math.min(Game.idx+1,TOTAL)+'/'+TOTAL; },
   hud(){ this.el.hudScore.textContent=Game.score; const hs=this.el.hull.children; for(let i=0;i<hs.length;i++) hs[i].className=i<Game.hull?'on':''; this.el.hull.className='hull'+(Game.hull<=2?' low':''); },
   pips(){ const ps=this.el.pips.children; for(let i=0;i<ps.length;i++){ const a=Game.att[i]; ps[i].className=a?(a.ok?'ok':'miss'):(i===Game.att.length&&Game.phase==='question'?'cur':''); } },
@@ -1066,6 +1087,11 @@ const UI={
     const key=cls+(Game.warp?'|w':''); if(this._tcls!==key){ this._tcls=key; this.el.timer.className='timer '+cls+(Game.warp?' warp':''); this.el.tleft.className='tleft '+cls+(Game.warp?' warp':''); }
     const txt=(Math.max(0,rem)/1000).toFixed(1); if(this._ttxt!==txt){ this._ttxt=txt; this.el.tleft.textContent=txt; } },
   pauseOv(on){ this.el.pauseOv.hidden=!on; },
+  shieldBtn(){ const b=$('#shieldBtn'); const owned=!!(Game.L&&Game.L.up.shield); b.hidden=!owned; if(!owned)return;
+    const st=Game.shield<=0?'used':Game.shieldArmed?'armed':'off';
+    b.className='shieldbtn '+st; b.setAttribute('aria-pressed',String(st==='armed')); b.disabled=st==='used';
+    $('#shieldLbl').textContent=st==='armed'?'ARMED':st==='off'?'OFF':'USED';
+    b.setAttribute('aria-label',st==='armed'?'Shield armed. Press S to switch it off and save it.':st==='off'?'Shield off and saved. Press S to arm it.':'Shield used for this mission.'); },
   celebrate(bonus){ $('#celebSub').textContent=TOTAL+' out of '+TOTAL+' \u00b7 not a single miss'; $('#celebBonus').innerHTML='&#9672; +'+fmtB(bonus)+' Space Bucks bonus'; const el=$('#celebrate'); el.hidden=false; $('#q').style.visibility='hidden'; this.el.timer.style.visibility='hidden'; this.el.tleft.style.visibility='hidden'; this.hideReveal(); },
   celebrateOff(){ $('#celebrate').hidden=true; $('#q').style.visibility=''; this.el.timer.style.visibility=''; this.el.tleft.style.visibility=''; },
   /* ---- Results ---- */
@@ -1294,9 +1320,10 @@ function wire(){
   $('#levels').addEventListener('click',e=>{ const b=e.target.closest('.lv'); if(!b)return; if(b.classList.contains('locked')){ b.style.transform='translateX(-4px)'; setTimeout(()=>b.style.transform='translateX(4px)',80); setTimeout(()=>b.style.transform='',160); return; } const cfg=cfgById(b.dataset.id); if(cfg) Game.start(cfg); });
   const pad=$('#pad'); pad.addEventListener('pointerdown',e=>{ const k=e.target.closest('.key'); if(!k)return; e.preventDefault(); k.classList.add('down'); setTimeout(()=>k.classList.remove('down'),110); Game.press(k.dataset.k); });
   pad.addEventListener('contextmenu',e=>e.preventDefault());
+  $('#shieldBtn').addEventListener('click',e=>{ Game.toggleShield(); e.currentTarget.blur(); });
   $('#btnPause').addEventListener('click',()=>Game.pause()); $('#btnResume').addEventListener('click',()=>Game.resume()); $('#btnQuit').addEventListener('click',()=>Game.quit());
   addEventListener('keydown',e=>{ if($('#play').hidden)return; if(e.metaKey||e.ctrlKey||e.altKey)return;
-    if(/^[0-9]$/.test(e.key)){ Game.press(e.key); e.preventDefault(); } else if(e.key==='Backspace'){ Game.press('del'); e.preventDefault(); } else if(e.key==='Enter'){ Game.press('go'); e.preventDefault(); } else if(e.key==='Escape'||e.key==='p'||e.key==='P'){ Game.togglePause(); } });
+    if(/^[0-9]$/.test(e.key)){ Game.press(e.key); e.preventDefault(); } else if(e.key==='Backspace'){ Game.press('del'); e.preventDefault(); } else if(e.key==='Enter'){ Game.press('go'); e.preventDefault(); } else if(e.key==='s'||e.key==='S'){ Game.toggleShield(); e.preventDefault(); } else if(e.key==='Escape'||e.key==='p'||e.key==='P'){ Game.togglePause(); } });
   document.addEventListener('visibilitychange',()=>{ if(document.hidden&&!$('#play').hidden) Game.pause(); });
   $('#btnLog').addEventListener('click',()=>{ UI.renderLog(); UI.show('log'); });
   $('#btnPilots').addEventListener('click',()=>Auth.open());
